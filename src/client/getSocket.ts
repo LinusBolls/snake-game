@@ -2,7 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 
 import type { ClientToServerEvents, ServerToClientEvents } from '../socket';
 
-const SERVER_URL = '';
+const SERVER_URL = window.location.protocol + '//' + window.location.host;
 
 const AUTH_STORAGE_KEY = 'snake:player';
 

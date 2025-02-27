@@ -2990,7 +2990,7 @@ Object.assign(lookup2, {
 });
 
 // src/client/getSocket.ts
-var SERVER_URL = "";
+var SERVER_URL = window.location.protocol + "//" + window.location.host;
 var AUTH_STORAGE_KEY = "snake:player";
 async function getPlayer() {
   const storedPlayer = localStorage.getItem(AUTH_STORAGE_KEY);
