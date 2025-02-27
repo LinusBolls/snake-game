@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Snek</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+
+        width: 100vw;
+        min-height: 100vh;
+
+        background-image: url(/lain_construction.png);
+        background-repeat: repeat;
+      }
+
+      .scanlines {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        left: -10px;
+        top: 10px;
+        z-index: 9999;
+        background: 
+    /* First gradient (vertical stripes) */
+          linear-gradient(rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+          /* Second gradient (horizontal color fade) */
+            linear-gradient(
+              90deg,
+              rgba(255, 0, 0, 0.06),
+              rgba(0, 255, 0, 0.02),
+              rgba(0, 0, 255, 0.06)
+            );
+        background-size:
+          100% 2px,
+          3px 100%;
+        pointer-events: none;
+      }
+
+      .wobbley {
+        animation: wobbley 100ms infinite;
+      }
+      .canvas {
+        position: absolute;
+        display: block;
+        margin: 0;
+        border: none;
+
+        left: -10px;
+        top: 10px;
+        z-index: 999;
+      }
+
+      @keyframes wobbley {
+        0% {
+          transform: translateY(0.5px);
+        }
+        100% {
+          transform: translateY(0);
+        }
+      }
+    </style>
+    <script src="index.js" async></script>
+  </head>
+  <body
+    style="
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    "
+  >
+    <div
+      style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-image: url(/laurie_wired_window.png);
+        background-size: 100% 100%;
+        background-position: center;
+        width: calc(1300px / 10 * 8);
+        height: calc(900px / 10 * 8);
+      "
+    >
+      <div
+        class="wobbley"
+        style="
+          position: relative;
+          width: fit-content;
+          height: fit-content;
+          width: 1008px;
+          height: 630px;
+        "
+      >
+        <div class="scanlines"></div>
+
+        <div
+          data-slot="ui"
+          style="
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            left: 20px;
+            top: 20px;
+            color: lime;
+            font-weight: bold;
+            z-index: 1000;
+          "
+        >
+          <p data-display="highscore" style="display: none"></p>
+          <p data-display="your-score" style="display: none"></p>
+        </div>
+
+        <canvas
+          class="canvas"
+          data-canvas="snake"
+          width="1008"
+          height="630"
+        ></canvas>
+      </div>
+    </div>
+    <div style="display: flex">
+      <img src="/bun.gif" />
+      <img src="/coverage.svg" />
+    </div>
+  </body>
+</html>
