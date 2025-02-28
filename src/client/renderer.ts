@@ -1,16 +1,22 @@
-import type { Score } from '../server/leaderboard';
 import type { GameClient } from './gameClient';
+import type { Leaderboard } from './leaderboard';
+import { UiState } from './uiState';
 
-export interface Leaderboard {
-  all: Score[];
-  personalBest: Score | undefined;
-}
+const themes: Record<string, { palette: string[] }> = {
+  pride: {
+    palette: ['#E50104', '#FE8B00', '#FEEC01', '#008029', '#004CFF', '#760789'],
+  },
+  trans: {
+    palette: ['#57CCFB', '#F6AAB5', '#FFFFFE', '#F4AAB5'],
+  },
+};
 
 export class Renderer {
   public debug = false;
   private canvas: HTMLCanvasElement;
   private game: GameClient;
-  private highscores: Leaderboard;
+  private leaderboard: Leaderboard;
+  private uiState: UiState;
 
   public setDebug(debug: boolean): void {
     this.debug = debug;
@@ -19,11 +25,13 @@ export class Renderer {
   constructor(
     canvas: HTMLCanvasElement,
     game: GameClient,
-    highscores: Leaderboard
+    leaderboard: Leaderboard,
+    uiState: UiState
   ) {
     this.canvas = canvas;
     this.game = game;
-    this.highscores = highscores;
+    this.leaderboard = leaderboard;
+    this.uiState = uiState;
   }
 
   private get ctx(): CanvasRenderingContext2D {
@@ -44,6 +52,42 @@ export class Renderer {
     this.ctx.shadowBlur = bloom ? 20 : 0;
     this.ctx.shadowColor = color;
     this.ctx.fillStyle = color;
+  }
+
+  public renderUiButton(text: string, y: number, active = false): void {
+    this.ctx.textAlign = 'center';
+    // this.ctx.reset()
+
+    this.setColor(active ? 'white' : 'gray');
+
+    this.ctx.fillText(text, this.canvas.width / 2, y);
+
+    this.ctx.textAlign = 'left';
+  }
+
+  private renderLeaderboard(x = 10, y = 20): void {
+    this.setColor('white');
+    this.ctx.font = '12px monospace';
+
+    this.ctx.fillText('==== LEADERBOARD ====', x, y);
+
+    const longestRank = this.leaderboard.all.length.toString().length;
+
+    const longestName = this.leaderboard.all.reduce(
+      (acc, score) => Math.max(acc, score?.name.length ?? 0),
+      0
+    );
+    const longestScore = this.leaderboard.all[0]?.score.toString().length ?? 1;
+
+    for (const [index, score] of this.leaderboard.all.entries()) {
+      this.ctx.fillText(
+        score
+          ? `${((index + 1).toString() + '.').padEnd(longestRank + 1)}  ${score.name.toUpperCase().padEnd(longestName)}  -  ${score.score.toString().padEnd(longestScore)}`
+          : `${((index + 1).toString() + '.').padEnd(longestRank + 1)}  --`,
+        x,
+        y + 20 + index * 20
+      );
+    }
   }
 
   public async render(): Promise<void> {
@@ -71,15 +115,32 @@ export class Renderer {
     }
 
     for (const player of this.game.state.players) {
-      this.setColor(player.color);
+      if (player.color.startsWith('theme:')) {
+        const palette = themes[player.color.split(':')[1]]?.palette ?? [
+          '#FFFFFF',
+        ];
 
-      for (const segment of player.segments) {
-        this.ctx.fillRect(
-          segment.pos.x * this.scale,
-          segment.pos.y * this.scale,
-          this.scale,
-          this.scale
-        );
+        for (const [idx, segment] of player.segments.entries()) {
+          this.setColor(palette[idx % palette.length]);
+
+          this.ctx.fillRect(
+            segment.pos.x * this.scale,
+            segment.pos.y * this.scale,
+            this.scale,
+            this.scale
+          );
+        }
+      } else {
+        this.setColor(player.color);
+
+        for (const segment of player.segments) {
+          this.ctx.fillRect(
+            segment.pos.x * this.scale,
+            segment.pos.y * this.scale,
+            this.scale,
+            this.scale
+          );
+        }
       }
     }
     for (const tile of this.game.state.tiles) {
@@ -97,52 +158,89 @@ export class Renderer {
     );
 
     if (!ourPlayer) {
-      // draw the leaderboard using the canvas ctx
-      this.setColor('white');
-      this.ctx.font = '12px monospace';
+      this.renderLeaderboard();
 
-      for (const [index, score] of this.highscores.all.entries()) {
-        this.ctx.fillText(
-          `${index + 1}. ${score.name} - ${score.score}`,
-          10,
-          50 + index * 20
+      if (this.uiState.isGameOver) {
+        this.ctx.font = 'bold 32px monospace';
+        this.renderUiButton(
+          'SCORE: ' + this.uiState.playerDeath!.player.score,
+          this.canvas.height / 2 - 110,
+          true
+        );
+        this.ctx.font = 'bold 16px monospace';
+        this.renderUiButton(
+          'PERSONAL BEST: ' + (this.leaderboard.personalBest ?? 0),
+          this.canvas.height / 2 - 80
         );
       }
-      // this.ctx.fillText('Leaderboard', 10, 20);
-      // this.ctx.fillText('All', 10, 40);
-      // this.ctx.fillText('Personal Best', 10, 60);
-      // this.ctx.fillText('Rank', 100, 20);
-      // this.ctx.fillText('Score', 150, 20);
-      // this.ctx.fillText('Name', 200, 20);
-      // this.ctx.fillText('Rank', 100, 40);
-      // this.ctx.fillText('Score', 150, 40);
-      // this.ctx.fillText('Name', 200, 40);
-      // this.ctx.fillText('Rank', 100, 60);
-      // this.ctx.fillText('Score', 150, 60);
-      // this.ctx.fillText('Name', 200, 60);
 
-      // document.querySelector('[data-display="your-score"]').style.display =
-      //   'none';
+      if (this.uiState.isStartMenuOpen) {
+        this.ctx.font = 'bold 16px monospace';
+        this.renderUiButton(
+          `[PRESS SPACE TO PLAY${this.uiState.isGameOver ? ' AGAIN' : ''}]`,
+          this.canvas.height / 2 + 80,
+          this.uiState.startMenuSelectedOption === 0
+        );
+        this.renderUiButton(
+          '[PRESS R TO RENAME]',
+          this.canvas.height / 2 + 110,
+          this.uiState.startMenuSelectedOption === 1
+        );
+        this.renderUiButton(
+          '[PRESS C TO CHANGE COLOR]',
+          this.canvas.height / 2 + 140,
+          this.uiState.startMenuSelectedOption === 2
+        );
+      } else if (this.uiState.isNameMenuOpen) {
+        this.ctx.font = 'bold 16px monospace';
+        this.renderUiButton(
+          'ENTER YOUR NAME: ' +
+            this.uiState.userName.toUpperCase() +
+            (this.uiState.showBlinkingCursor() ? '_' : ' '),
+          this.canvas.height / 2 - 50,
+          true
+        );
+      }
+
+      if (this.uiState.isGameOver) {
+        this.setColor('white');
+
+        this.ctx.textAlign = 'center';
+
+        // bar in the center of the screen that fills the whole width
+        this.ctx.fillRect(0, this.canvas.height / 2 - 5, this.canvas.width, 50);
+
+        // text thats centered inside the bar
+        this.setColor('black', false);
+        this.ctx.font = 'bold 32px monospace';
+        this.ctx.fillText(
+          'GAME OVER',
+          this.canvas.width / 2,
+          this.canvas.height / 2 + 32
+        );
+
+        this.ctx.textAlign = 'left';
+      }
     } else {
-      this.setColor('lime');
+      this.ctx.textAlign = 'center';
+      this.setColor('white');
       this.ctx.font = 'bold 16px monospace';
 
-      this.ctx.fillText(`Your Score: ${ourPlayer.score}`, 10, 100);
       this.ctx.fillText(
-        `Personal Best: ${this.highscores.personalBest?.score ?? 0}`,
-        10,
-        120
+        `Your Score: ${this.leaderboard.playerCurrentScore ?? 0}`,
+        this.canvas.width / 2,
+        20
       );
       this.ctx.fillText(
-        `Highscore: ${this.highscores.all[0]?.score ?? 0}`,
-        10,
-        140
+        `Personal Best: ${this.leaderboard.personalBest ?? 0}`,
+        this.canvas.width / 2,
+        50
       );
-      // document.querySelector('[data-display="your-score"]').style.display =
-      //   'block';
-
-      // document.querySelector('[data-display="your-score"]').innerHTML =
-      //   'Your Score: ' + ourPlayer.segments.length;
+      this.ctx.fillText(
+        `Highscore: ${this.leaderboard.all[0]?.score ?? 0}`,
+        this.canvas.width / 2,
+        80
+      );
     }
     const renderEnd = performance.now();
 

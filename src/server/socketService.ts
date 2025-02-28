@@ -58,8 +58,11 @@ export function initSocketHandlers(
 
       socket.on('spawn', (data) => {
         if (!game.hasPlayer(playerId)) {
-          const color = isValidHTMLColor(data.color) ? data.color : 'lime';
-          const name = data.name || 'Unknown';
+          const color =
+            isValidHTMLColor(data.color) || data.color.startsWith('theme:')
+              ? data.color
+              : 'lime';
+          const name = data.name.trim() || 'Unknown';
 
           game.spawnPlayer(playerId, color, name);
         }
@@ -92,4 +95,10 @@ export function initSocketHandlers(
       });
     }
   }, 50);
+
+  game.events.on('playerDeath', (data) => {
+    for (const socket of sockets) {
+      socket.emit('playerDeath', data);
+    }
+  });
 }

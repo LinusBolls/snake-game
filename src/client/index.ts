@@ -1,9 +1,11 @@
 import { Direction } from '../game';
 import { GameClient } from './gameClient';
 import { getPlayer, getSocket } from './getSocket';
-import { type Leaderboard, Renderer } from './renderer';
+import { Leaderboard, type LeaderboardData } from './leaderboard';
+import { Renderer } from './renderer';
+import { UiState } from './uiState';
 
-async function getHighscores(token: string): Promise<Leaderboard> {
+async function getHighscores(token: string): Promise<LeaderboardData> {
   const res = await fetch('/highscores', {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -27,17 +29,56 @@ async function init(): Promise<void> {
   socket.on('connect', () => {
     const game = new GameClient(socket, playerId);
 
-    game.player.spawn({ name: 'linus', color: 'foo' });
+    const uiState = new UiState(game);
+
+    game.events.on('playerDeath', (data) => {
+      if (data.player.id === game.player.id) {
+        uiState.setGameOver(data);
+      }
+    });
 
     document.addEventListener('keydown', (e) => {
+      if (uiState.isNameMenuOpen) {
+        switch (e.key) {
+          case 'Enter':
+            uiState.goToStartMenu();
+            break;
+          case 'Escape':
+            uiState.goToStartMenu();
+            break;
+          case 'Backspace':
+            uiState.setUserName(uiState.userName?.slice(0, -1));
+            break;
+          default:
+            // e.key can also be "Shift", "Control", "Alt", "Meta", "Tab", "CapsLock", "Dead", etc
+            if (e.key.length === 1) {
+              uiState.setUserName(uiState.userName + e.key);
+            }
+        }
+        return;
+      }
       switch (e.key) {
+        case ' ':
+          game.player.spawn({
+            name: localStorage.getItem('snake:name') || 'Unknown',
+            color: localStorage.getItem('snake:color') || 'lime',
+          });
+          break;
         case 'w':
         case 'ArrowUp':
-          game.player.turn(Direction.UP);
+          if (game.player.isPlaying) {
+            game.player.turn(Direction.UP);
+          } else {
+            uiState.handlePreviousOption();
+          }
           break;
         case 's':
         case 'ArrowDown':
-          game.player.turn(Direction.DOWN);
+          if (game.player.isPlaying) {
+            game.player.turn(Direction.DOWN);
+          } else {
+            uiState.handleNextOption();
+          }
           break;
         case 'a':
         case 'ArrowLeft':
@@ -47,13 +88,40 @@ async function init(): Promise<void> {
         case 'ArrowRight':
           game.player.turn(Direction.RIGHT);
           break;
+
+        case 'r':
+          if (!game.player.isPlaying) {
+            uiState.openNameMenu();
+          }
+          break;
+        case 'c':
+          if (!game.player.isPlaying) {
+            uiState.openColorMenu();
+          }
+          break;
+        case 'Enter':
+          if (!game.player.isPlaying) {
+            uiState.handleCurrentOption();
+          }
+          break;
+        case 'Escape':
+          if (!game.player.isPlaying) {
+            uiState.goToStartMenu();
+          }
+          break;
       }
     });
 
     const canvas = document.querySelector<HTMLCanvasElement>(
       '[data-canvas="snake"]'
     )!;
-    const renderer = new Renderer(canvas, game, highscores);
+
+    const renderer = new Renderer(
+      canvas,
+      game,
+      new Leaderboard(game, highscores),
+      uiState
+    );
 
     renderer.init();
 

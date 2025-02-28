@@ -10,8 +10,8 @@ export interface Score {
   playerId: string;
   name: string;
   score: number;
-  causeOfDeath: string;
 
+  causeOfDeath: string;
   playedAt: number;
 }
 

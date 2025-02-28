@@ -216,10 +216,7 @@ class Apple extends Tile {
 
 export class Game {
   public events = mitt<{
-    playerDeath: {
-      player: { id: string; score: number; name: string; color: string };
-      cause: string;
-    };
+    playerDeath: PlayerDeath;
   }>();
 
   public getMostFreeDirection(pos: Position): Direction {
@@ -447,4 +444,9 @@ export class GameState {
     });
     return state;
   }
+}
+
+export interface PlayerDeath {
+  player: { id: string; score: number; name: string; color: string };
+  cause: string;
 }

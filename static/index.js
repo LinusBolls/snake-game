@@ -346,6 +346,7 @@ class GameClient {
   socket;
   player = {
     id: "",
+    isPlaying: false,
     spawn: (data) => {
       this.socket.emit("spawn", data);
     },
@@ -356,11 +357,13 @@ class GameClient {
   constructor(socket, playerId) {
     this.player.id = playerId;
     this.socket = socket;
+    this.socket.on("playerDeath", (data) => this.events.emit("playerDeath", data));
     this.socket.on("tick", (data) => {
       const ourPlayer = data.snakes.find((snake) => snake.id === this.player.id);
       if (ourPlayer) {
         this.player.snake = ourPlayer;
       }
+      this.player.isPlaying = ourPlayer != null;
       this.state = GameState.fromJSON(data);
       this.events.emit("tick");
     });
@@ -3009,19 +3012,83 @@ async function getSocket(token) {
   return socket;
 }
 
+// src/client/leaderboard.ts
+var LEADERBOARD_SPOTS = 10;
+
+class Leaderboard {
+  game;
+  data;
+  get playerCurrentScore() {
+    return this.game.player.snake?.score;
+  }
+  get personalBest() {
+    return this.data.personalBest?.score;
+  }
+  get all() {
+    return this.data.all;
+  }
+  constructor(game, initialData) {
+    this.game = game;
+    this.data = initialData;
+    this.game.events.on("tick", () => {
+      const ourPlayersScore = this.game.player.snake?.score;
+      const currentRoundIsPersonalBest = ourPlayersScore != null && ourPlayersScore >= (this.data.personalBest?.score ?? 0);
+      if (currentRoundIsPersonalBest) {
+        this.data.personalBest = {
+          playerId: this.game.player.id,
+          name: this.game.player.snake?.name ?? "Unknown",
+          score: ourPlayersScore
+        };
+      }
+      const sache = this.data.all.filter((i) => i != null && i.causeOfDeath != null).concat(this.game.state.players.map((i) => ({
+        playerId: i.id,
+        name: i.name,
+        score: i.score
+      }))).toSorted((a, b) => b.score - a.score).slice(0, Math.max(this.data.all.length, LEADERBOARD_SPOTS));
+      this.data.all = sache.concat(Array.from({ length: LEADERBOARD_SPOTS - sache.length }, () => null));
+    });
+    this.game.events.on("playerDeath", (player) => {
+      const deadPlayerScore = {
+        playerId: player.player.id,
+        name: player.player.name,
+        score: player.player.score,
+        causeOfDeath: player.cause,
+        playedAt: Date.now()
+      };
+      const sache = this.data.all.filter((i) => i != null && i.causeOfDeath != null).concat([deadPlayerScore]).concat(this.game.state.players.map((i) => ({
+        playerId: i.id,
+        name: i.name,
+        score: i.score
+      }))).toSorted((a, b) => b.score - a.score).slice(0, Math.max(this.data.all.length, LEADERBOARD_SPOTS));
+      this.data.all = sache.concat(Array.from({ length: LEADERBOARD_SPOTS - sache.length }, () => null));
+    });
+  }
+}
+
 // src/client/renderer.ts
+var themes = {
+  pride: {
+    palette: ["#E50104", "#FE8B00", "#FEEC01", "#008029", "#004CFF", "#760789"]
+  },
+  trans: {
+    palette: ["#57CCFB", "#F6AAB5", "#FFFFFE", "#F4AAB5"]
+  }
+};
+
 class Renderer {
   debug = false;
   canvas;
   game;
-  highscores;
+  leaderboard;
+  uiState;
   setDebug(debug) {
     this.debug = debug;
   }
-  constructor(canvas, game, highscores) {
+  constructor(canvas, game, leaderboard, uiState) {
     this.canvas = canvas;
     this.game = game;
-    this.highscores = highscores;
+    this.leaderboard = leaderboard;
+    this.uiState = uiState;
   }
   get ctx() {
     return this.canvas.getContext("2d");
@@ -3037,6 +3104,23 @@ class Renderer {
     this.ctx.shadowColor = color;
     this.ctx.fillStyle = color;
   }
+  renderUiButton(text, y, active = false) {
+    this.ctx.textAlign = "center";
+    this.setColor(active ? "white" : "gray");
+    this.ctx.fillText(text, this.canvas.width / 2, y);
+    this.ctx.textAlign = "left";
+  }
+  renderLeaderboard(x = 10, y = 20) {
+    this.setColor("white");
+    this.ctx.font = "12px monospace";
+    this.ctx.fillText("==== LEADERBOARD ====", x, y);
+    const longestRank = this.leaderboard.all.length.toString().length;
+    const longestName = this.leaderboard.all.reduce((acc, score) => Math.max(acc, score?.name.length ?? 0), 0);
+    const longestScore = this.leaderboard.all[0]?.score.toString().length ?? 1;
+    for (const [index, score] of this.leaderboard.all.entries()) {
+      this.ctx.fillText(score ? `${((index + 1).toString() + ".").padEnd(longestRank + 1)}  ${score.name.toUpperCase().padEnd(longestName)}  -  ${score.score.toString().padEnd(longestScore)}` : `${((index + 1).toString() + ".").padEnd(longestRank + 1)}  --`, x, y + 20 + index * 20);
+    }
+  }
   async render() {
     const renderStart = performance.now();
     if (!this.game.isLoaded)
@@ -3051,9 +3135,19 @@ class Renderer {
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
     for (const player of this.game.state.players) {
-      this.setColor(player.color);
-      for (const segment of player.segments) {
-        this.ctx.fillRect(segment.pos.x * this.scale, segment.pos.y * this.scale, this.scale, this.scale);
+      if (player.color.startsWith("theme:")) {
+        const palette = themes[player.color.split(":")[1]]?.palette ?? [
+          "#FFFFFF"
+        ];
+        for (const [idx, segment] of player.segments.entries()) {
+          this.setColor(palette[idx % palette.length]);
+          this.ctx.fillRect(segment.pos.x * this.scale, segment.pos.y * this.scale, this.scale, this.scale);
+        }
+      } else {
+        this.setColor(player.color);
+        for (const segment of player.segments) {
+          this.ctx.fillRect(segment.pos.x * this.scale, segment.pos.y * this.scale, this.scale, this.scale);
+        }
       }
     }
     for (const tile of this.game.state.tiles) {
@@ -3062,17 +3156,38 @@ class Renderer {
     }
     const ourPlayer = this.game.state.players.find((player) => player.id === this.game.player.id);
     if (!ourPlayer) {
-      this.setColor("white");
-      this.ctx.font = "12px monospace";
-      for (const [index, score] of this.highscores.all.entries()) {
-        this.ctx.fillText(`${index + 1}. ${score.name} - ${score.score}`, 10, 50 + index * 20);
+      this.renderLeaderboard();
+      if (this.uiState.isGameOver) {
+        this.ctx.font = "bold 32px monospace";
+        this.renderUiButton("SCORE: " + this.uiState.playerDeath.player.score, this.canvas.height / 2 - 110, true);
+        this.ctx.font = "bold 16px monospace";
+        this.renderUiButton("PERSONAL BEST: " + (this.leaderboard.personalBest ?? 0), this.canvas.height / 2 - 80);
+      }
+      if (this.uiState.isStartMenuOpen) {
+        this.ctx.font = "bold 16px monospace";
+        this.renderUiButton(`[PRESS SPACE TO PLAY${this.uiState.isGameOver ? " AGAIN" : ""}]`, this.canvas.height / 2 + 80, this.uiState.startMenuSelectedOption === 0);
+        this.renderUiButton("[PRESS R TO RENAME]", this.canvas.height / 2 + 110, this.uiState.startMenuSelectedOption === 1);
+        this.renderUiButton("[PRESS C TO CHANGE COLOR]", this.canvas.height / 2 + 140, this.uiState.startMenuSelectedOption === 2);
+      } else if (this.uiState.isNameMenuOpen) {
+        this.ctx.font = "bold 16px monospace";
+        this.renderUiButton("ENTER YOUR NAME: " + this.uiState.userName.toUpperCase() + (this.uiState.showBlinkingCursor() ? "_" : " "), this.canvas.height / 2 - 50, true);
+      }
+      if (this.uiState.isGameOver) {
+        this.setColor("white");
+        this.ctx.textAlign = "center";
+        this.ctx.fillRect(0, this.canvas.height / 2 - 5, this.canvas.width, 50);
+        this.setColor("black", false);
+        this.ctx.font = "bold 32px monospace";
+        this.ctx.fillText("GAME OVER", this.canvas.width / 2, this.canvas.height / 2 + 32);
+        this.ctx.textAlign = "left";
       }
     } else {
-      this.setColor("lime");
+      this.ctx.textAlign = "center";
+      this.setColor("white");
       this.ctx.font = "bold 16px monospace";
-      this.ctx.fillText(`Your Score: ${ourPlayer.score}`, 10, 100);
-      this.ctx.fillText(`Personal Best: ${this.highscores.personalBest?.score ?? 0}`, 10, 120);
-      this.ctx.fillText(`Highscore: ${this.highscores.all[0]?.score ?? 0}`, 10, 140);
+      this.ctx.fillText(`Your Score: ${this.leaderboard.playerCurrentScore ?? 0}`, this.canvas.width / 2, 20);
+      this.ctx.fillText(`Personal Best: ${this.leaderboard.personalBest ?? 0}`, this.canvas.width / 2, 50);
+      this.ctx.fillText(`Highscore: ${this.leaderboard.all[0]?.score ?? 0}`, this.canvas.width / 2, 80);
     }
     const renderEnd = performance.now();
     if (this.debug) {
@@ -3081,6 +3196,91 @@ class Renderer {
       this.ctx.fillText(`Render time: ${Math.round(renderEnd - renderStart)}ms`, 10, 20);
       this.ctx.fillText(`Ping: ${Math.floor(this.game.getPing())}ms`, 10, 40);
     }
+  }
+}
+
+// src/client/uiState.ts
+var numStartMenuOptions = 3;
+
+class UiState {
+  game;
+  constructor(game) {
+    this.game = game;
+  }
+  get isGameOver() {
+    return this.playerDeath != null;
+  }
+  startMenuSelectedOption = 0;
+  colorSelectedOption = 0;
+  userName = localStorage.getItem("snake:name") || "";
+  playerDeath = null;
+  selectNextStartMenuOption() {
+    this.startMenuSelectedOption = (this.startMenuSelectedOption + 1) % numStartMenuOptions;
+  }
+  selectPreviousStartMenuOption() {
+    this.startMenuSelectedOption = (this.startMenuSelectedOption - 1 + numStartMenuOptions) % numStartMenuOptions;
+  }
+  selectNextColorOption() {
+    this.colorSelectedOption = (this.colorSelectedOption + 1) % 3;
+  }
+  selectPreviousColorOption() {
+    this.colorSelectedOption = (this.colorSelectedOption - 1 + 3) % 3;
+  }
+  setUserName(name) {
+    this.userName = name;
+    localStorage.setItem("snake:name", name);
+  }
+  setGameOver(playerDeath) {
+    this.playerDeath = playerDeath;
+  }
+  isColorMenuOpen = false;
+  isNameMenuOpen = false;
+  openColorMenu() {
+    this.isColorMenuOpen = true;
+    this.isNameMenuOpen = false;
+  }
+  openNameMenu() {
+    this.isColorMenuOpen = false;
+    this.isNameMenuOpen = true;
+  }
+  goToStartMenu() {
+    this.isColorMenuOpen = false;
+    this.isNameMenuOpen = false;
+  }
+  handleNextOption() {
+    if (this.isColorMenuOpen) {
+      this.selectNextColorOption();
+    } else if (this.isStartMenuOpen) {
+      this.selectNextStartMenuOption();
+    }
+  }
+  handlePreviousOption() {
+    if (this.isColorMenuOpen) {
+      this.selectPreviousColorOption();
+    } else if (this.isStartMenuOpen) {
+      this.selectPreviousStartMenuOption();
+    }
+  }
+  get isStartMenuOpen() {
+    return !this.isColorMenuOpen && !this.isNameMenuOpen;
+  }
+  handleCurrentOption() {
+    if (this.isStartMenuOpen) {
+      switch (this.startMenuSelectedOption) {
+        case 0:
+          this.game.player.spawn({ name: localStorage.getItem("snake:name") || "Unknown", color: localStorage.getItem("snake:color") || "lime" });
+          break;
+        case 1:
+          this.openNameMenu();
+          break;
+        case 2:
+          this.openColorMenu();
+          break;
+      }
+    }
+  }
+  showBlinkingCursor() {
+    return this.isNameMenuOpen && Math.floor(performance.now() / 500) % 2 === 0;
   }
 }
 
@@ -3103,16 +3303,50 @@ async function init() {
   const socket = await getSocket(token);
   socket.on("connect", () => {
     const game = new GameClient(socket, playerId);
-    game.player.spawn({ name: "linus", color: "foo" });
+    const uiState = new UiState(game);
+    game.events.on("playerDeath", (data) => {
+      if (data.player.id === game.player.id) {
+        uiState.setGameOver(data);
+      }
+    });
     document.addEventListener("keydown", (e) => {
+      if (uiState.isNameMenuOpen) {
+        switch (e.key) {
+          case "Enter":
+            uiState.goToStartMenu();
+            break;
+          case "Escape":
+            uiState.goToStartMenu();
+            break;
+          case "Backspace":
+            uiState.setUserName(uiState.userName?.slice(0, -1));
+            break;
+          default:
+            if (e.key.length === 1) {
+              uiState.setUserName(uiState.userName + e.key);
+            }
+        }
+        return;
+      }
       switch (e.key) {
+        case " ":
+          game.player.spawn({ name: localStorage.getItem("snake:name") || "Unknown", color: localStorage.getItem("snake:color") || "lime" });
+          break;
         case "w":
         case "ArrowUp":
-          game.player.turn("UP" /* UP */);
+          if (game.player.isPlaying) {
+            game.player.turn("UP" /* UP */);
+          } else {
+            uiState.handlePreviousOption();
+          }
           break;
         case "s":
         case "ArrowDown":
-          game.player.turn("DOWN" /* DOWN */);
+          if (game.player.isPlaying) {
+            game.player.turn("DOWN" /* DOWN */);
+          } else {
+            uiState.handleNextOption();
+          }
           break;
         case "a":
         case "ArrowLeft":
@@ -3122,10 +3356,30 @@ async function init() {
         case "ArrowRight":
           game.player.turn("RIGHT" /* RIGHT */);
           break;
+        case "r":
+          if (!game.player.isPlaying) {
+            uiState.openNameMenu();
+          }
+          break;
+        case "c":
+          if (!game.player.isPlaying) {
+            uiState.openColorMenu();
+          }
+          break;
+        case "Enter":
+          if (!game.player.isPlaying) {
+            uiState.handleCurrentOption();
+          }
+          break;
+        case "Escape":
+          if (!game.player.isPlaying) {
+            uiState.goToStartMenu();
+          }
+          break;
       }
     });
     const canvas = document.querySelector('[data-canvas="snake"]');
-    const renderer = new Renderer(canvas, game, highscores);
+    const renderer = new Renderer(canvas, game, new Leaderboard(game, highscores), uiState);
     renderer.init();
     window.debug = () => {
       renderer.setDebug(!renderer.debug);

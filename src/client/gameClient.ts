@@ -4,6 +4,7 @@ import type { Socket } from 'socket.io-client';
 import {
   type Direction,
   GameState,
+  type PlayerDeath,
   type SerializedGameState,
   Tile,
 } from '../game';
@@ -11,6 +12,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from '../socket';
 
 interface OurPlayer {
   id: string;
+  isPlaying: boolean;
   snake?: SerializedGameState['snakes'][0];
   spawn: (data: { name: string; color: string }) => void;
   turn: (direction: Direction) => void;
@@ -30,6 +32,7 @@ export class GameClient {
    */
   public player: OurPlayer = {
     id: '',
+    isPlaying: false,
     spawn: (data: { name: string; color: string }): void => {
       this.socket.emit('spawn', data);
     },
@@ -46,6 +49,10 @@ export class GameClient {
 
     this.socket = socket;
 
+    this.socket.on('playerDeath', (data) =>
+      this.events.emit('playerDeath', data)
+    );
+
     this.socket.on('tick', (data) => {
       const ourPlayer = data.snakes.find(
         (snake) => snake.id === this.player.id
@@ -54,6 +61,7 @@ export class GameClient {
       if (ourPlayer) {
         this.player.snake = ourPlayer;
       }
+      this.player.isPlaying = ourPlayer != null;
 
       this.state = GameState.fromJSON(data);
 
@@ -69,6 +77,7 @@ export class GameClient {
   public events = mitt<{
     tick: void;
     tileEaten: { tile: Tile };
+    playerDeath: PlayerDeath;
   }>();
 
   private lastPing: {
