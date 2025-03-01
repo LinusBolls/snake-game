@@ -1,0 +1,29 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.REMOTE_PORT }}
+          script: |
+            # kill existing process if it exists
+            pkill -f "bun start PROJECT=snake-game" || true
+
+            cd /root/snake-game
+            git pull origin main
+            bun install
+            bun run build:client
+
+            # the PROJECT=snake-game doesn't actually do anything, we use it to match only the correct process when killing it
+            bun start PROJECT=snake-game
