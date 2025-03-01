@@ -26,4 +26,4 @@ jobs:
             bun run build:client
 
             # the PROJECT=snake-game doesn't actually do anything, we use it to match only the correct process when killing it
-            bun start PROJECT=snake-game
+            nohup bun start PROJECT=snake-game &
