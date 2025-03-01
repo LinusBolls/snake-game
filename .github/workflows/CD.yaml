@@ -21,7 +21,7 @@ jobs:
             tmux kill-session -t snake-game || true
 
             cd /root/snake-game
-            git pull origin main
+            git pull origin main --no-rebase
             bun install
             bun run build:client
 

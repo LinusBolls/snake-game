@@ -1,6 +1,0 @@
-$ bun run src/server "PROJECT=snake_game"
-listening at http://localhost:3000
-error: script "start" was terminated by signal SIGTERM (Polite quit request)
-$ bun run src/server "PROJECT=snake_game"
-listening at http://localhost:3000
-error: script "start" was terminated by signal SIGTERM (Polite quit request)
