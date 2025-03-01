@@ -18,12 +18,11 @@ jobs:
           port: ${{ secrets.REMOTE_PORT }}
           script: |
             # kill existing process if it exists
-            pkill -f "bun start PROJECT=snake-game" || true
+            tmux kill-session -t snake-game || true
 
             cd /root/snake-game
             git pull origin main
             bun install
             bun run build:client
 
-            # the PROJECT=snake-game doesn't actually do anything, we use it to match only the correct process when killing it
-            nohup bun start PROJECT=snake-game &
+            tmux new-session -d -s snake-game "bun start"
