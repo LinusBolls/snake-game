@@ -25,4 +25,4 @@ jobs:
             bun install
             bun run build:client
 
-            tmux -v new-session -d -s snake-game -c "/projects/snake-game" "cd /projects/snake-game && ls && bun start 2>&1 | tee /root/snake.log"
+            tmux -v new-session -d -s snake-game -c "/projects/snake-game" "cd /projects/snake-game && bun run /projects/snake-game/src/server/index.ts 2>&1 | tee /root/snake.log"
