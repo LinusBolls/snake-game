@@ -59,7 +59,8 @@ export async function buildFastify(): Promise<FastifyInstance> {
 async function main(): Promise<void> {
   const app = await buildFastify();
 
-  app.listen({ port: env.port }, (err) => {
+  // host: '0.0.0.0' is required for Docker
+  app.listen({ port: env.port, host: '0.0.0.0' }, (err) => {
     if (err) throw err;
 
     // eslint-disable-next-line no-console

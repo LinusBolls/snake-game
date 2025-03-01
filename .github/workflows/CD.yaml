@@ -17,12 +17,10 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.REMOTE_PORT }}
           script: |
-            # kill existing process if it exists
-            tmux kill-session -t snake-game || true
-
             cd /projects/snake-game
-            git pull origin main --no-rebase
-            bun install
-            bun run build:client
 
-            tmux -v new-session -d -s snake-game -c "/projects/snake-game" "cd /projects/snake-game && bun run /projects/snake-game/src/server/index.ts 2>&1 | tee /root/snake.log"
+            git pull origin main --no-rebase
+
+            docker-compose down
+
+            docker-compose up -d --build

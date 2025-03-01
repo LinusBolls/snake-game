@@ -3268,7 +3268,10 @@ class UiState {
     if (this.isStartMenuOpen) {
       switch (this.startMenuSelectedOption) {
         case 0:
-          this.game.player.spawn({ name: localStorage.getItem("snake:name") || "Unknown", color: localStorage.getItem("snake:color") || "lime" });
+          this.game.player.spawn({
+            name: localStorage.getItem("snake:name") || "Unknown",
+            color: localStorage.getItem("snake:color") || "lime"
+          });
           break;
         case 1:
           this.openNameMenu();
@@ -3330,7 +3333,10 @@ async function init() {
       }
       switch (e.key) {
         case " ":
-          game.player.spawn({ name: localStorage.getItem("snake:name") || "Unknown", color: localStorage.getItem("snake:color") || "lime" });
+          game.player.spawn({
+            name: localStorage.getItem("snake:name") || "Unknown",
+            color: localStorage.getItem("snake:color") || "lime"
+          });
           break;
         case "w":
         case "ArrowUp":
