@@ -20,9 +20,9 @@ jobs:
             # kill existing process if it exists
             tmux kill-session -t snake-game || true
 
-            cd /root/snake-game
+            cd /projects/snake-game
             git pull origin main --no-rebase
             bun install
             bun run build:client
 
-            tmux new-session -d -s snake-game "bun start 2>&1 | tee /root/snake.log"
+            tmux -v new-session -d -s snake-game "bun start 2>&1 | tee /root/snake.log"
